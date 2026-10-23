@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { after, before, describe, it } from "node:test";
-import { createAppServer } from "./server.js";
+import vercelHandler from "./api/[...route].js";
+import { createAppHandler, createAppServer } from "./server.js";
 
 async function startServer(options = {}) {
   const server = createAppServer(options);
@@ -12,6 +14,25 @@ async function startServer(options = {}) {
     server,
     baseUrl: `http://127.0.0.1:${server.address().port}`,
     close: () => new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())),
+  };
+}
+
+function createMockResponse() {
+  return {
+    headers: {},
+    headersSent: false,
+    destroyed: false,
+    setHeader(name, value) {
+      this.headers[name] = value;
+    },
+    writeHead(status, headers = {}) {
+      this.statusCode = status;
+      Object.assign(this.headers, headers);
+      this.headersSent = true;
+    },
+    end(body) {
+      this.body = body;
+    },
   };
 }
 
@@ -129,6 +150,59 @@ describe("Cloudstep server", () => {
   it("does not expose assets outside the explicit static allowlist", async () => {
     const response = await fetch(`${app.baseUrl}/server.js`);
     assert.equal(response.status, 404);
+  });
+});
+
+describe("Vercel serverless handler", () => {
+  it("serves health checks through the Vercel function entry point", async () => {
+    const request = Object.assign(new EventEmitter(), {
+      method: "GET",
+      url: "/api/health",
+      headers: { host: "cloudstep.vercel.app" },
+      socket: { remoteAddress: "127.0.0.1" },
+    });
+    const response = createMockResponse();
+    await vercelHandler(request, response);
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(JSON.parse(response.body), {
+      configured: false,
+      provider: "Google Gemini",
+      model: "gemini-3.5-flash",
+    });
+  });
+
+  it("accepts Vercel's parsed JSON request body", async () => {
+    const handler = createAppHandler({
+      apiKey: "test-key",
+      model: "test-model",
+      logger: { error() {} },
+      fetchImpl: async () => Response.json({
+        steps: [{
+          type: "model_output",
+          content: [{ type: "text", text: "A region is a geographic area." }],
+        }],
+      }),
+    });
+    const request = Object.assign(new EventEmitter(), {
+      method: "POST",
+      url: "/api/chat",
+      headers: { host: "cloudstep.vercel.app" },
+      socket: { remoteAddress: "127.0.0.1" },
+      body: {
+        mode: "tutor",
+        topic: "Azure architecture & services",
+        language: "English",
+        exampleStyle: "an everyday beginner-friendly example, without assuming a country",
+        messages: [{ role: "user", text: "What is an Azure region?" }],
+      },
+    });
+    const response = createMockResponse();
+    await handler(request, response);
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(JSON.parse(response.body), {
+      reply: "A region is a geographic area.",
+      model: "test-model",
+    });
   });
 });
 

@@ -11,7 +11,7 @@ const MAX_MESSAGES = 12;
 const MAX_MESSAGE_LENGTH = 1_200;
 const MAX_REPLY_LENGTH = 4_000;
 const OUTPUT_BUDGET = 900;
-const REQUEST_TIMEOUT_MS = 35_000;
+const REQUEST_TIMEOUT_MS = 25_000;
 const RATE_LIMIT = 12;
 const RATE_WINDOW_MS = 60_000;
 const ASSETS = new Map([
@@ -48,6 +48,24 @@ function sendJson(response, status, value) {
 }
 
 function readJson(request) {
+  if (request.body !== undefined) {
+    try {
+      const bodySize = Buffer.byteLength(typeof request.body === "string" || Buffer.isBuffer(request.body)
+        ? request.body
+        : JSON.stringify(request.body));
+      if (bodySize > MAX_BODY_BYTES) {
+        return Promise.reject(Object.assign(new Error("Request is too large."), { status: 413 }));
+      }
+      const body = typeof request.body === "string" || Buffer.isBuffer(request.body)
+        ? JSON.parse(request.body.toString())
+        : request.body;
+      return Promise.resolve(body);
+    } catch (error) {
+      if (error.status) return Promise.reject(error);
+      return Promise.reject(Object.assign(new Error("Request must contain valid JSON."), { status: 400 }));
+    }
+  }
+
   return new Promise((resolveBody, rejectBody) => {
     let size = 0;
     const chunks = [];
@@ -200,14 +218,14 @@ function setSecurityHeaders(response) {
   );
 }
 
-export function createAppServer({
+export function createAppHandler({
   apiKey = process.env.GEMINI_API_KEY,
   model = process.env.GEMINI_MODEL || DEFAULT_MODEL,
   fetchImpl = fetch,
   logger = console,
 } = {}) {
   const allowRequest = createRateLimiter();
-  return createHttpServer(async (request, response) => {
+  return async (request, response) => {
     setSecurityHeaders(response);
     const url = new URL(request.url || "/", "http://localhost");
 
@@ -357,7 +375,11 @@ export function createAppServer({
     }
 
     sendJson(response, 404, { error: "Not found." });
-  });
+  };
+}
+
+export function createAppServer(options) {
+  return createHttpServer(createAppHandler(options));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
