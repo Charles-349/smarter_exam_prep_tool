@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { after, before, describe, it } from "node:test";
-import vercelHandler from "./api/[...route].js";
+import { createChatHandler } from "./api/chat.js";
+import healthHandler from "./api/health.js";
 import { createAppHandler, createAppServer } from "./server.js";
 
 async function startServer(options = {}) {
@@ -154,7 +155,7 @@ describe("Cloudstep server", () => {
 });
 
 describe("Vercel serverless handler", () => {
-  it("serves health checks through the Vercel function entry point", async () => {
+  it("serves health checks through the dedicated Vercel function", async () => {
     const request = Object.assign(new EventEmitter(), {
       method: "GET",
       url: "/api/health",
@@ -162,7 +163,7 @@ describe("Vercel serverless handler", () => {
       socket: { remoteAddress: "127.0.0.1" },
     });
     const response = createMockResponse();
-    await vercelHandler(request, response);
+    await healthHandler(request, response);
     assert.equal(response.statusCode, 200);
     assert.deepEqual(JSON.parse(response.body), {
       configured: false,
@@ -171,8 +172,8 @@ describe("Vercel serverless handler", () => {
     });
   });
 
-  it("accepts Vercel's parsed JSON request body", async () => {
-    const handler = createAppHandler({
+  it("accepts Vercel's parsed JSON request body on the chat function", async () => {
+    const chatHandler = createChatHandler({
       apiKey: "test-key",
       model: "test-model",
       logger: { error() {} },
@@ -197,7 +198,7 @@ describe("Vercel serverless handler", () => {
       },
     });
     const response = createMockResponse();
-    await handler(request, response);
+    await chatHandler(request, response);
     assert.equal(response.statusCode, 200);
     assert.deepEqual(JSON.parse(response.body), {
       reply: "A region is a geographic area.",

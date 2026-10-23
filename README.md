@@ -16,9 +16,9 @@ Without a key, the quiz, flashcards, planner, and prompt builder still work. The
 
 1. Import the GitHub repository into Vercel, keeping the project root as the Root Directory.
 2. Add `GEMINI_API_KEY` under the Vercel project's **Settings → Environment Variables**. Add `GEMINI_MODEL` only if you need to override the default `gemini-3.5-flash`. Do not add local `HOST` or `PORT` values.
-3. Deploy (or redeploy after adding/changing environment variables). The static app is served from the project root, and `api/[...route].js` exposes the Gemini health and chat endpoints as Vercel serverless functions.
+3. Deploy (or redeploy after adding/changing environment variables). Vercel is explicitly configured to use the **Other** framework preset: the static app is served from the project root, while `api/chat.js` and `api/health.js` expose the Gemini endpoints as separate Vercel serverless functions.
 
-The Vercel API function accepts both Vercel's parsed JSON request bodies and normal Node.js request streams, so the same handler serves local development and deployment.
+The serverless functions and local server share the same request handler. It accepts both Vercel's parsed JSON request bodies and normal Node.js request streams.
 
 Quiz progress, review cards, study activity, and the study plan stay in the current browser's local storage. Chat history exists only in page memory and is sent to Gemini through the server proxy with `store: false`; it is not persisted by Cloudstep. Do not send passwords, personal data, or confidential information to an AI tutor.
 
